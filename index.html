@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>מערכת ניהול נסיעות | מנהל</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Heebo', system-ui, sans-serif; }
+    .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); }
+    .trip-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px -5px rgb(0 0 0 / 0.1); }
+    textarea:focus, input:focus, select:focus { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.35); }
+    .badge-vat { background: #dbeafe; color: #1e40af; }
+    .badge-no-vat { background: #f3f4f6; color: #4b5563; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  
+    body { background:
+      radial-gradient(circle at 90% 0%, rgba(59,130,246,.10), transparent 32%),
+      radial-gradient(circle at 10% 30%, rgba(99,102,241,.08), transparent 28%),
+      #f8fafc; }
+    .hero-glow { box-shadow: 0 20px 60px -25px rgba(30,64,175,.55); }
+    .cloud-pill { display:inline-flex; align-items:center; gap:.45rem; padding:.4rem .75rem; border-radius:999px;
+      background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.18); font-size:.75rem; }
+    .cloud-dot { width:8px; height:8px; border-radius:50%; background:#34d399; box-shadow:0 0 0 4px rgba(52,211,153,.14); }
+    .cloud-lock { backdrop-filter: blur(18px); background:rgba(15,23,42,.72); }
+    .login-card { background:rgba(255,255,255,.96); backdrop-filter:blur(24px); }
+    .app-shell-card { border:1px solid rgba(148,163,184,.22); box-shadow:0 18px 60px -35px rgba(15,23,42,.35); }
+
+    /* SaaS UX layer */
+    :root { --brand:#2563eb; --brand2:#4f46e5; --ink:#0f172a; --muted:#64748b; }
+    html { scroll-behavior:smooth; }
+    body { background:
+      radial-gradient(circle at 85% -10%, rgba(37,99,235,.13), transparent 28%),
+      radial-gradient(circle at 0% 35%, rgba(79,70,229,.08), transparent 25%),
+      #f4f7fb; }
+    header { box-shadow:0 10px 35px -22px rgba(15,23,42,.7) !important; }
+    header .max-w-7xl { min-height:72px; }
+    nav { background:rgba(255,255,255,.86) !important; backdrop-filter:blur(16px); }
+    nav .max-w-7xl { padding-top:.35rem; padding-bottom:.35rem; }
+    .tab-btn { position:relative; border:1px solid transparent !important; border-bottom-width:1px !important; border-radius:12px; white-space:nowrap; transition:all .18s ease; }
+    .tab-btn:hover { background:#f1f5f9; transform:translateY(-1px); }
+    .tab-btn.active { background:linear-gradient(135deg,#eff6ff,#eef2ff); color:#1d4ed8 !important; border-color:#dbeafe !important; box-shadow:0 4px 14px -10px rgba(37,99,235,.7); }
+    .tab-btn.active::after { content:''; position:absolute; bottom:-5px; left:18%; right:18%; height:3px; border-radius:999px; background:linear-gradient(90deg,var(--brand),var(--brand2)); }
+    .tab-content { animation:pageIn .24s ease both; }
+    @keyframes pageIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
+    .bg-white.rounded-2xl, .bg-white.rounded-\[28px\] { box-shadow:0 10px 35px -28px rgba(15,23,42,.5); }
+    .bg-white.rounded-2xl { border-color:rgba(148,163,184,.28) !important; }
+    section > .bg-white, section > .grid > .bg-white { transition:box-shadow .2s ease,border-color .2s ease,transform .2s ease; }
+    section > .bg-white:hover, section > .grid > .bg-white:hover { border-color:rgba(96,165,250,.32) !important; box-shadow:0 18px 45px -32px rgba(30,64,175,.55); }
+    input, select, textarea { transition:border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+    input:hover, select:hover, textarea:hover { border-color:#94a3b8; }
+    button { transition:transform .15s ease, box-shadow .15s ease, background-color .15s ease; }
+    button:active { transform:translateY(1px); }
+    .cloud-pill { box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 5px 18px -12px rgba(0,0,0,.5); }
+    .cloud-dot { animation:pulseCloud 2.2s infinite; }
+    @keyframes pulseCloud { 0%,100%{box-shadow:0 0 0 4px rgba(52,211,153,.14)} 50%{box-shadow:0 0 0 7px rgba(52,211,153,.04)} }
+    #tab-dashboard .bg-white { overflow:hidden; position:relative; }
+    #tab-dashboard .bg-white::before { content:''; position:absolute; inset:0 0 auto; height:3px; background:linear-gradient(90deg,#2563eb,#4f46e5,#7c3aed); opacity:.9; }
+    #tab-dashboard .grid.sm\:grid-cols-2.lg\:grid-cols-4 > div { min-height:124px; display:flex; flex-direction:column; justify-content:center; }
+    #tab-trips table tbody tr { transition:background .15s ease; }
+    #tab-trips table tbody tr:hover { background:#f8fbff; }
+    #tab-trips thead tr { background:linear-gradient(180deg,#f8fafc,#f1f5f9); }
+    #customersGrid > * { transition:transform .18s ease, box-shadow .18s ease; }
+    #customersGrid > *:hover { transform:translateY(-3px); box-shadow:0 18px 38px -28px rgba(15,23,42,.5); }
+    #toast { backdrop-filter:blur(12px); box-shadow:0 14px 40px -18px rgba(15,23,42,.65); }
+    #fabAddTrip { box-shadow:0 12px 30px -10px rgba(22,163,74,.7); }
+    @media (max-width:768px) {
+      header .max-w-7xl { min-height:64px; }
+      nav { top:64px !important; }
+      nav .max-w-7xl { gap:.15rem; }
+      .tab-btn { padding:.65rem .8rem !important; font-size:.78rem !important; }
+      main { padding-top:1rem !important; }
+    }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.001ms !important; transition-duration:.001ms !important; scroll-behavior:auto !important; } }
+
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <div id="cloudLogin" class="fixed inset-0 z-[100] flex items-center justify-center p-4 cloud-lock">
+    <div class="login-card w-full max-w-md rounded-[28px] shadow-2xl border border-white/70 p-7 hero-glow">
+      <div class="text-center mb-7">
+        <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center text-3xl shadow-lg">☁️</div>
+        <h2 class="text-2xl font-bold text-slate-900 mt-4">מערכת ניהול נסיעות</h2>
+        <p class="text-sm text-slate-500 mt-1">הנתונים שלך נשמרים בענן ומסתנכרנים בין המכשירים</p>
+      </div>
+      <div class="space-y-3">
+        <input id="cloudEmail" type="email" autocomplete="email" placeholder="אימייל"
+          class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-slate-50/80 focus:bg-white" />
+        <input id="cloudPassword" type="password" autocomplete="current-password" placeholder="סיסמה"
+          class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-slate-50/80 focus:bg-white" />
+        <button onclick="cloudLogin()" class="w-full bg-gradient-to-l from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold py-3 rounded-2xl shadow-lg transition">כניסה למערכת</button>
+        <button onclick="cloudSignup()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-2xl transition">יצירת חשבון חדש</button>
+      </div>
+      <p id="cloudAuthMsg" class="text-center text-xs text-slate-500 mt-4 min-h-5"></p>
+      <div id="cloudBootError" class="hidden mt-3 bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-xs"></div>
+      <p class="text-[11px] text-slate-400 text-center mt-5">התחברות נדרשת כדי למנוע שמירת נתונים עסקיים בדפדפן.</p>
+    </div>
+  </div>
+
+
+  <!-- Header -->
+  <header class="bg-gradient-to-l from-blue-700 to-indigo-800 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="bg-white/20 p-2 rounded-xl text-2xl">🚌</div>
+        <div>
+          <h1 class="text-xl font-bold leading-tight">מערכת ניהול נסיעות</h1>
+          <p class="text-blue-100 text-xs">ניהול נסיעות · מחירונים · ייבוא · דוחות · סנכרון ענן</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 text-sm flex-wrap">
+        <label class="bg-white/15 hover:bg-white/25 px-3 py-1 rounded-full flex items-center gap-2 cursor-pointer transition" title="לחץ לשינוי חודש העבודה">
+          <span class="text-xs opacity-80">חודש:</span>
+          <input type="month" id="headerMonth" onchange="changeWorkingMonth(this.value)"
+            class="bg-transparent border-0 text-white text-sm font-medium cursor-pointer focus:outline-none"
+            style="color-scheme: dark;" />
+        </label>
+        <span id="cloudHeaderStatus" class="cloud-pill"><span class="cloud-dot"></span><span id="cloudHeaderEmail">ענן מחובר</span></span>
+        <button onclick="showTab('settings')" class="bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-lg transition">⚙️ הגדרות</button>
+        <button onclick="cloudLogout()" class="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition">יציאה</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="bg-white border-b border-slate-200 sticky top-[60px] z-40 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto">
+      <button data-tab="quick" class="tab-btn active px-5 py-3 font-medium text-sm border-b-2 border-blue-600 text-blue-700">⚡ הזנה מהירה</button>
+      <button data-tab="desk" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">🗂️ עמדת מזכירה</button>
+      <button data-tab="trips" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">📋 נסיעות החודש</button>
+      <button data-tab="dashboard" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">📊 דשבורד</button>
+      <button data-tab="reports" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">📈 דוחות</button>
+      <button data-tab="customers" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">👥 ניהול לקוחות</button>
+      <button data-tab="export" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">📥 ייצוא אקסל</button>
+      <button data-tab="import" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">📨 ייבוא</button>
+      <button data-tab="drivers" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">👤 ניהול מזמינים</button>
+      <button data-tab="ai" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">🤖 סוכן AI</button>
+      <button data-tab="settings" class="tab-btn px-5 py-3 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800">⚙️ הגדרות</button>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- ========== QUICK ENTRY ========== -->
+    <section id="tab-quick" class="tab-content">
+      <div class="grid lg:grid-cols-2 gap-6">
+        <!-- Paste area -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+          <h2 class="text-lg font-semibold mb-1 flex items-center gap-2">
+            <span class="bg-blue-100 text-blue-700 w-8 h-8 rounded-lg flex items-center justify-center text-sm">1</span>
+            הדבק הודעת וואטסאפ
+          </h2>
+          <p class="text-slate-500 text-sm mb-4">העתק את ההודעה מהנהג והדבק כאן. המערכת תנסה לחלץ תאריך, מחיר ומסלול.</p>
+          
+          <textarea id="pasteArea" rows="6" placeholder="דוגמה:&#10;בב ים 320&#10;או:&#10;02/09 נתניה בב 450 ספרינטר&#10;או פשוט טקסט חופשי..."
+            class="w-full border border-slate-300 rounded-xl p-4 text-sm resize-y focus:border-blue-500 transition"></textarea>
+          
+          <div class="flex gap-2 mt-3">
+            <button onclick="parsePaste()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl transition">
+              🔍 נתח הודעה
+            </button>
+            <button onclick="document.getElementById('pasteArea').value=''; document.getElementById('pasteArea').focus()" class="px-4 py-2.5 border border-slate-300 rounded-xl hover:bg-slate-50 transition text-sm">
+              נקה
+            </button>
+          </div>
+        </div>
+
+        <!-- Classification form -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+          <h2 class="text-lg font-semibold mb-1 flex items-center gap-2">
+            <span class="bg-green-100 text-green-700 w-8 h-8 rounded-lg flex items-center justify-center text-sm">2</span>
+            סיווג ושמירה
+          </h2>
+          <p class="text-slate-500 text-sm mb-4">בחר לקוח, אשר/תקן פרטים ושמור.</p>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-1">לקוח *</label>
+              <select id="formCustomer" onchange="onCustomerChange()" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm">
+                <option value="">— בחר לקוח —</option>
+              </select>
+            </div>
+                        <div id="lineRow" class="hidden">
+              <label class="block text-sm font-medium text-slate-600 mb-1">קו / גיליון</label>
+              <select id="formLine" onchange="onFormLineChange()" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm">
+                <option value="">— בחר קו —</option>
+              </select>
+            </div>
+            <div id="columnRow" class="hidden">
+              <label class="block text-sm font-medium text-slate-600 mb-1">שעה / עמודה (כמו באקסל)</label>
+              <select id="formColumn" onchange="onFormColumnChange()" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm">
+                <option value="">— בחר שעה / עמודה —</option>
+              </select>
+              <div id="columnChips" class="flex flex-wrap gap-1.5 mt-2"></div>
+            </div><div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1">תאריך (יום בודד)</label>
+                <input type="date" id="formDate" onchange="onFormDateChange()" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-600 mb-1">מחיר בפועל (₪)</label>
+                <input type="number" id="formPrice" min="0" step="1" placeholder="0" oninput="onPriceInput()" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+              </div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button type="button" onclick="openDayCalendarModal()" class="inline-flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-3 py-2 rounded-xl text-sm font-medium transition">
+                📅 בחירת ימים מרובים
+              </button>
+              <span id="calSelectedLabel" class="text-xs text-slate-500">יום בודד מהתאריך למעלה</span>
+            </div>
+            <div id="priceSuggestionBox" class="hidden rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 space-y-1.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-semibold text-indigo-900">💰 הצעת מחיר</span>
+                <button type="button" onclick="applySuggestedPrice()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg">החל</button>
+              </div>
+              <div id="priceSuggestionMain" class="text-lg font-bold text-indigo-800"></div>
+              <div id="priceSuggestionSource" class="text-xs text-indigo-600"></div>
+              <div id="priceHistoryHint" class="text-xs text-slate-500"></div>
+            </div>
+            <div id="priceDeviationBox" class="hidden rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <div class="font-semibold">⚠️ חריגה ממחירון הלקוח</div>
+              <div id="priceDeviationText" class="text-xs mt-1"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-1">מסלול / תיאור / שעת קו</label>
+              <input type="text" id="formRoute" placeholder="בב ים · או · קו גדול 08:00" oninput="onRouteFieldsChange()" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+              <div class="flex flex-wrap gap-1.5 mt-2" id="routeSuggestions"></div>
+            </div>
+            <details class="text-sm">
+              <summary class="cursor-pointer text-slate-500 hover:text-slate-700">מוצא ויעד (אופציונלי – לנסיעות נקודה לנקודה)</summary>
+              <div class="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">מוצא</label>
+                  <input type="text" id="formOrigin" list="placeList" placeholder="בני ברק..." oninput="onRouteFieldsChange()" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-600 mb-1">יעד</label>
+                  <input type="text" id="formDestination" list="placeList" placeholder="ירושלים..." oninput="onRouteFieldsChange()" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">לקווים קבועים (פרח וכו׳) מספיק לבחור מסלול/שעה למעלה – לא חובה מוצא/יעד.</p>
+            </details>
+            <datalist id="placeList"></datalist>
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-1">הערות</label>
+              <input type="text" id="formNotes" placeholder="ספיישל, ספרינטר, המתנה..." class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-600 mb-1">מזמין</label>
+              <input type="text" id="formDriver" placeholder="שם המזמין" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" list="ordererList" oninput="onOrdererInput()" />
+              <datalist id="ordererList"></datalist>
+              <datalist id="driverList"></datalist>
+              <div id="ordererSuggestBox" class="hidden mt-1.5 text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-1.5"></div>
+              <div class="flex flex-wrap gap-1.5 mt-2" id="driverFavorites"></div>
+              <div class="flex flex-wrap gap-1.5 mt-1" id="ordererChips"></div>
+              <button type="button" onclick="openOrderersManager()" class="mt-1.5 text-xs text-indigo-600 hover:underline">⚙️ ניהול מזמינים ללקוח</button>
+            </div>
+
+            <button onclick="saveTrip()" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl transition text-base mt-2">
+              ✅ שמור נסיעה
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent trips quick view -->
+      <div class="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold">נסיעות אחרונות שנוספו</h3>
+          <button onclick="showTab('trips')" class="text-blue-600 text-sm hover:underline">הצג הכל →</button>
+        </div>
+        <div id="recentTrips" class="space-y-2"></div>
+      </div>
+    </section>
+
+
+    <!-- ========== SECRETARY DESK ========== -->
+    <section id="tab-desk" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4">
+        <div class="flex flex-wrap items-end gap-3">
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">לקוח</label>
+            <select id="deskCustomer" onchange="onDeskCustomerChange()" class="border border-slate-300 rounded-xl px-3 py-2 text-sm min-w-[160px]"></select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">קו</label>
+            <select id="deskLine" onchange="onDeskLineChange()" class="border border-slate-300 rounded-xl px-3 py-2 text-sm min-w-[140px]"></select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-500 mb-1">חודש</label>
+            <input type="month" id="deskMonth" onchange="renderDeskMatrix()" class="border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="deskCopyYesterday()" class="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl">📋 העתק אתמול</button>
+            <button type="button" onclick="deskCopyLastWeek()" class="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl">📋 העתק שבוע שעבר</button>
+            <button type="button" onclick="deskOpenDay()" class="text-xs bg-emerald-50 text-emerald-800 hover:bg-emerald-100 px-3 py-2 rounded-xl font-medium">☀️ פתיחת יום</button>
+            <button type="button" onclick="deskFocusPaste()" class="text-xs bg-indigo-50 text-indigo-800 hover:bg-indigo-100 px-3 py-2 rounded-xl">📥 הדבקה מאקסל</button>
+          </div>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">הקלד מחיר בתא · Enter לשמירה · Tab לתא הבא · הדבק טווח מאקסל (Ctrl+V) על הטבלה</p>
+      </div>
+      <div id="deskMissing" class="hidden mb-3 text-sm bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2"></div>
+      <div id="deskMatrix" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 overflow-x-auto" tabindex="0"></div>
+      <textarea id="deskPasteArea" class="sr-only" aria-hidden="true"></textarea>
+    </section>
+
+    <!-- ========== TRIPS LIST ========== -->
+    <section id="tab-trips" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 class="text-lg font-semibold">📋 כל הנסיעות</h2>
+          <div class="flex flex-wrap gap-2 items-center">
+            <select id="filterCustomer" onchange="onFilterCustomerChange()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm">
+              <option value="">כל הלקוחות</option>
+            </select>
+            <select id="filterLine" onchange="onFilterLineChange()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm hidden">
+              <option value="">כל הקווים</option>
+            </select>
+            <select id="filterRoute" onchange="renderTrips()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm hidden">
+              <option value="">כל המסלולים</option>
+            </select>
+            <input type="month" id="filterMonth" onchange="renderTrips()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm" />
+            <input type="search" id="filterSearch" oninput="renderTrips()" placeholder="חיפוש מסלול/הערות..." class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm w-40" />
+            <button type="button" id="btnExcelView" onclick="toggleTripsExcelView()" class="text-xs bg-indigo-50 text-indigo-800 border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-100">📊 תצוגת אקסל</button>
+            <button type="button" onclick="bulkDeleteSelected()" class="text-xs bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-100">🗑️ מחק מסומנים</button>
+          </div>
+        </div>
+
+        <div id="tripsExcelView" class="hidden mb-4 overflow-x-auto border border-slate-200 rounded-xl p-3 bg-slate-50"></div>
+
+        <div id="tripsListView" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-50 text-slate-600 border-b">
+                <th class="text-center py-3 px-2 font-medium w-8"><input type="checkbox" id="tripSelectAll" onchange="toggleSelectAllTrips(this.checked)" title="בחר הכל" /></th>
+                <th class="text-right py-3 px-3 font-medium">תאריך</th>
+                <th class="text-right py-3 px-3 font-medium">לקוח</th>
+                <th class="text-right py-3 px-3 font-medium">מסלול</th>
+                <th class="text-right py-3 px-3 font-medium">מחיר</th>
+                <th class="text-right py-3 px-3 font-medium">הערות</th>
+                <th class="text-right py-3 px-3 font-medium">מזמין</th>
+                <th class="text-center py-3 px-3 font-medium">פעולות</th>
+              </tr>
+            </thead>
+            <tbody id="tripsTableBody"></tbody>
+          </table>
+        </div>
+        <div id="tripsEmpty" class="text-center py-12 text-slate-400 hidden">אין נסיעות להצגה</div>
+        <div class="mt-4 flex justify-between items-center text-sm text-slate-500">
+          <span id="tripsCount"></span>
+          <span id="tripsSum" class="font-semibold text-slate-700"></span>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ========== DASHBOARD ========== -->
+    <section id="tab-dashboard" class="tab-content hidden">
+      <div class="relative overflow-hidden rounded-[28px] bg-gradient-to-l from-slate-950 via-blue-950 to-indigo-900 text-white p-6 sm:p-8 mb-6 shadow-2xl">
+        <div class="absolute -left-16 -top-20 w-64 h-64 rounded-full bg-blue-500/20 blur-3xl"></div>
+        <div class="absolute right-1/3 -bottom-24 w-72 h-72 rounded-full bg-indigo-500/20 blur-3xl"></div>
+        <div class="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div>
+            <div class="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/10 px-3 py-1 text-xs text-blue-100 mb-3">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_0_5px_rgba(52,211,153,.12)]"></span> מערכת פעילה ומסונכרנת
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-bold tracking-tight">מרכז השליטה</h2>
+            <p class="text-blue-100/80 text-sm mt-1">תמונה מהירה של פעילות העסק, ההכנסות והנסיעות לחודש העבודה.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="showTab('quick');document.getElementById('formCustomer')?.focus()" class="bg-white text-slate-900 hover:bg-blue-50 px-4 py-2.5 rounded-xl font-semibold text-sm shadow-lg">＋ נסיעה חדשה</button>
+            <button onclick="showTab('trips')" class="bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2.5 rounded-xl font-medium text-sm">צפייה בנסיעות</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div class="flex items-start justify-between"><div><div class="text-xs font-medium text-slate-500 mb-2">הכנסות החודש</div><div id="dashRevenue" class="text-2xl font-bold text-indigo-700">—</div></div><div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">₪</div></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div class="flex items-start justify-between"><div><div class="text-xs font-medium text-slate-500 mb-2">מספר נסיעות</div><div id="dashTrips" class="text-2xl font-bold text-slate-800">—</div></div><div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">↗</div></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div class="flex items-start justify-between"><div><div class="text-xs font-medium text-slate-500 mb-2">לקוחות פעילים</div><div id="dashCustomers" class="text-2xl font-bold text-slate-800">—</div></div><div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">♙</div></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div class="flex items-start justify-between"><div><div class="text-xs font-medium text-slate-500 mb-2">ממוצע לנסיעה</div><div id="dashAvg" class="text-2xl font-bold text-emerald-700">—</div></div><div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">₪</div></div>
+        </div>
+      </div>
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div class="flex items-center justify-between gap-3 mb-4"><div><h3 class="font-bold text-slate-900">הכנסות לפי לקוח</h3><p class="text-xs text-slate-400 mt-0.5">מי מייצר את עיקר המחזור</p></div><span class="text-xs bg-slate-100 rounded-full px-2.5 py-1 text-slate-500">חודש נוכחי</span></div>
+          <div id="dashByCustomer" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+          <div class="flex items-center justify-between gap-3 mb-4"><div><h3 class="font-bold text-slate-900">מסלולים נפוצים</h3><p class="text-xs text-slate-400 mt-0.5">המסלולים שחוזרים הכי הרבה</p></div><span class="text-xs bg-blue-50 rounded-full px-2.5 py-1 text-blue-600">פעילות</span></div>
+          <div id="dashRoutes" class="space-y-2 text-sm max-h-80 overflow-y-auto"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== REPORTS ========== -->
+    <section id="tab-reports" class="tab-content hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-4">
+        <h2 class="text-lg font-semibold mb-1">⚠️ חריגות ממחירון</h2>
+        <p class="text-sm text-slate-500 mb-4">נסיעות שבהן המחיר בפועל שונה ממחירון הלקוח</p>
+        <div id="deviationsTable" class="overflow-x-auto text-sm"></div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm mb-4">
+        <h2 class="text-lg font-semibold mb-3">ניתוח לקוח</h2>
+        <select id="analysisCustomer" onchange="renderCustomerAnalysis()" class="border border-slate-300 rounded-xl px-3 py-2 text-sm mb-3"></select>
+        <div id="customerAnalysis" class="text-sm space-y-2"></div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+        <h2 class="text-lg font-semibold mb-3">ניתוח מסלול</h2>
+        <input id="analysisRoute" oninput="renderRouteAnalysis()" placeholder="למשל: בב ים / קו 08:00" class="border border-slate-300 rounded-xl px-3 py-2 text-sm mb-3 w-full max-w-md" />
+        <div id="routeAnalysis" class="text-sm space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- ========== CUSTOMERS ========== -->
+    <section id="tab-customers" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-lg font-semibold">👥 ניהול לקוחות</h2>
+          <button onclick="showAddCustomer()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-xl transition">+ הוסף לקוח</button>
+        </div>
+        <div id="customersGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+    </section>
+
+    <!-- ========== EXPORT ========== -->
+    <section id="tab-export" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 max-w-2xl mx-auto">
+        <h2 class="text-lg font-semibold mb-1">📥 ייצוא לאקסל</h2>
+        <p class="text-slate-500 text-sm mb-6">בחר חודש ולקוחות לייצוא. הקבצים יורדו בפורמט מוכן לסיכום חודשי.</p>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">חודש לייצוא</label>
+            <input type="month" id="exportMonth" class="w-full border border-slate-300 rounded-xl px-3 py-2.5" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-2">לקוחות לייצוא</label>
+            <div class="flex gap-2 mb-2">
+              <button onclick="selectAllCustomers(true)" class="text-xs text-blue-600 hover:underline">בחר הכל</button>
+              <button onclick="selectAllCustomers(false)" class="text-xs text-slate-500 hover:underline">נקה הכל</button>
+            </div>
+            <div id="exportCustomerList" class="max-h-60 overflow-y-auto border border-slate-200 rounded-xl p-3 space-y-1.5"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="exportSeparate" checked class="rounded" />
+            <label for="exportSeparate" class="text-sm">קובץ נפרד לכל לקוח</label>
+          </div>
+          <button onclick="doExport()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition">
+            ⬇️ הורד אקסל
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== IMPORT WHATSAPP ========== -->
+    <section id="tab-import" class="tab-content hidden">
+      <!-- Excel Import -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-6">
+        <h2 class="text-lg font-semibold mb-1">📥 ייבוא מאקסל</h2>
+        <p class="text-slate-500 text-sm mb-4">העלה קובץ XLSX/CSV. המערכת תזהה עמודות, תציג מיפוי, ותכניס נתונים לבדיקה לפני אישור.</p>
+
+        <div class="flex flex-wrap gap-3 items-end mb-4">
+          <div class="flex-1 min-w-[200px]">
+            <label class="block text-sm font-medium mb-1">קובץ Excel</label>
+            <input type="file" id="excelFile" accept=".xlsx,.xls,.csv" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2" />
+          </div>
+          <div class="min-w-[160px]">
+            <label class="block text-sm font-medium mb-1">לקוח (אופציונלי)</label>
+            <select id="excelCustomer" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm">
+              <option value="">— זהה מהקובץ / בחר —</option>
+            </select>
+          </div>
+          <button onclick="startExcelImport()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium">נתח קובץ</button>
+        </div>
+
+        <!-- Column mapping -->
+        <div id="excelMappingBox" class="hidden mb-4">
+          <h3 class="font-medium mb-2">מיפוי עמודות</h3>
+          <div id="excelMappingTable" class="overflow-x-auto text-sm mb-3"></div>
+          <button onclick="runExcelParse()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm">המשך לייבוא לבדיקה</button>
+        </div>
+
+        <!-- Pending review -->
+        <div id="excelPendingBox" class="hidden">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h3 class="font-medium">🔍 נתונים ממתינים לבדיקה <span id="excelPendingCount" class="text-amber-600"></span></h3>
+            <div class="flex gap-2">
+              <button onclick="approveAllPending()" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg">✓ אשר את כל התקינים</button>
+              <button onclick="rejectAllPending()" class="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg">דחה הכל</button>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2 text-xs mb-2">
+            <span class="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full" id="statOk">🟢 0</span>
+            <span class="bg-amber-50 text-amber-700 px-2 py-1 rounded-full" id="statWarn">🟡 0</span>
+            <span class="bg-red-50 text-red-700 px-2 py-1 rounded-full" id="statErr">🔴 0</span>
+          </div>
+          <div id="excelPendingTable" class="overflow-x-auto max-h-96 overflow-y-auto text-xs border border-slate-200 rounded-xl"></div>
+        </div>
+      </div>
+
+      <!-- WhatsApp (existing) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 max-w-3xl mx-auto">
+        <h2 class="text-lg font-semibold mb-1">📨 ייבוא הודעות וואטסאפ (TXT)</h2>
+        <p class="text-slate-500 text-sm mb-5">
+          בוואטסאפ: פתח קבוצה → ⋮ → עוד → ייצוא צ׳אט → ללא מדיה.<br>
+          העלה את קובץ ה-TXT. המערכת תחלץ תאריכים ותוכן, ותציע נסיעות לסיווג.
+        </p>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">לקוח משויך לקבוצה (אופציונלי)</label>
+            <select id="importCustomer" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm">
+              <option value="">— ללא שיוך אוטומטי —</option>
+            </select>
+            <p class="text-xs text-slate-400 mt-1">אם הקבוצה שייכת ללקוח מסוים – בחר כאן</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">קובץ TXT מייצוא וואטסאפ</label>
+            <input type="file" id="importFile" accept=".txt,.zip" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2" />
+          </div>
+          <button onclick="parseWhatsAppFile()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition">
+            🔍 נתח קובץ
+          </button>
+        </div>
+
+        <div id="importResults" class="mt-6 hidden">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">הודעות שזוהו כנסיעות</h3>
+            <button onclick="importSelectedTrips()" class="bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-xl">✅ ייבא מסומנים</button>
+          </div>
+          <div id="importList" class="space-y-2 max-h-96 overflow-y-auto"></div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <!-- ========== DRIVERS ========== -->
+    <section id="tab-drivers" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-lg font-semibold">👤 ניהול מזמינים</h2>
+          <button onclick="showAddDriver()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-xl transition">+ הוסף מזמין</button>
+        </div>
+        <p class="text-sm text-slate-500 mb-4">מזמינים מועדפים יופיעו כקיצור בהזנת נסיעה. אפשר לשייך מזמין ללקוח ספציפי.</p>
+        <div id="driversGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </div>
+    </section>
+
+    <!-- ========== SETTINGS ========== -->
+    
+    <!-- ========== AI AGENT ========== -->
+    <section id="tab-ai" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h2 class="text-lg font-semibold">🤖 סוכן AI (Gemini)</h2>
+            <p class="text-sm text-slate-500">מחובר ל-Google Gemini · מבין עברית חופשית ומשנה נתונים</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="geminiStatus" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">בודק…</span>
+            <button type="button" onclick="showTab('settings')" class="text-xs text-indigo-600 hover:underline">הגדרות מפתח</button>
+          </div>
+        </div>
+        <div id="aiChat" class="border border-slate-200 rounded-xl bg-slate-50 h-72 overflow-y-auto p-4 mb-3 space-y-3 text-sm"></div>
+        <div class="flex gap-2">
+          <input type="text" id="aiInput" placeholder="לדוגמה: בפרח בקו בב שעה 8 שנה מחיר ל־320 עד ה־14 בלי שישי שבת"
+            class="flex-1 border border-slate-300 rounded-xl px-4 py-2.5 text-sm"
+            onkeydown="if(event.key==='Enter') runAICommand()" />
+          <button id="aiSendBtn" onclick="runAICommand()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-medium">שלח</button>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2 text-xs">
+          <button onclick="fillAI('בפרח בקו בני ברק ב־08:00 הוסף 320 כל יום חוץ משישי ושבת')" class="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full hover:bg-indigo-100">+ הוסף קו יומי</button>
+          <button onclick="fillAI('כמה נסיעות לפרח החודש?')" class="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-full hover:bg-slate-200">ספירה</button>
+          <button onclick="fillAI('שנה ל־200')" class="bg-amber-50 text-amber-800 px-3 py-1.5 rounded-full hover:bg-amber-100">שנה מחיר (הקשר)</button>
+          <button onclick="fillAI('מחק נסיעות אחרי 14 בפרח')" class="bg-red-50 text-red-700 px-3 py-1.5 rounded-full hover:bg-red-100">מחק אחרי 14</button>
+          <button onclick="fillAI('הצג קווים של פרח')" class="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full hover:bg-emerald-100">הצג קווים</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-settings" class="tab-content hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 max-w-xl">
+        <h2 class="text-lg font-semibold mb-4">⚙️ הגדרות</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">מע״מ ברירת מחדל (%)</label>
+            <input type="number" id="defaultVat" value="18" min="0" max="100" class="w-32 border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">חודש עבודה נוכחי</label>
+            <input type="month" id="workingMonth" onchange="setWorkingMonth()" class="border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <hr class="border-slate-200" />
+          <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <h3 class="font-semibold text-blue-950">☁️ שמירה וסנכרון בענן</h3>
+              <span id="cloudSettingsStatus" class="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">מחובר</span>
+            </div>
+            <p class="text-xs text-blue-800/70">כל הלקוחות, הנסיעות, המחירונים, ההגדרות וההיסטוריה נשמרים בחשבון הענן שלך. ניתן לפתוח את אותו חשבון ממספר מחשבים/טלפונים והנתונים מתעדכנים ביניהם.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" onclick="cloudForceSave()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-xl">☁️ שמור עכשיו</button>
+              <button type="button" onclick="cloudLogout()" class="bg-white border border-blue-200 text-blue-700 text-sm px-4 py-2 rounded-xl">יציאה</button>
+            </div>
+          </div>
+          <hr class="border-slate-200" />
+          <div>
+            <h3 class="font-medium mb-2">🔑 Google Gemini API</h3>
+            <p class="text-xs text-slate-500 mb-2">המפתח נשמר בנתוני הענן הפרטיים של החשבון שלך תחת הרשאות RLS. אין מפתח מוטמע בקוד.</p>
+            <input type="password" id="geminiApiKey" placeholder="הדבק מפתח API" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm mb-2" />
+            <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="saveGeminiKey()" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-xl">שמור מפתח</button>
+              <button type="button" onclick="testGeminiConnection()" class="bg-slate-100 text-sm px-4 py-2 rounded-xl">בדיקת חיבור</button>
+              <button type="button" onclick="clearGeminiKey()" class="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl">מחק מפתח</button>
+            </div>
+            <p id="geminiKeyHint" class="text-xs text-slate-400 mt-2"></p>
+          </div>
+          <hr class="border-slate-200" />
+          <div>
+            <h3 class="font-medium mb-2">גיבוי ושחזור</h3>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="exportBackup()" class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl text-sm transition">💾 ייצא גיבוי JSON</button>
+              <label class="bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl text-sm transition cursor-pointer">
+                📂 ייבא גיבוי
+                <input type="file" accept=".json" onchange="importBackup(event)" class="hidden" />
+              </label>
+              <button onclick="if(confirm('למחוק את כל הנתונים מהענן? הפעולה בלתי הפיכה.')){resetAllCloudData()}" class="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-xl text-sm transition">🗑️ איפוס הכל</button>
+            </div>
+          </div>
+          <div class="text-xs text-slate-400 pt-4">
+            <div class="flex flex-wrap gap-2 mb-3">
+              <button type="button" onclick="exportBackup()" class="bg-slate-800 text-white text-sm px-4 py-2 rounded-xl">הורד גיבוי JSON</button>
+              <button type="button" onclick="scheduleAutoBackupHint()" class="bg-slate-100 text-sm px-4 py-2 rounded-xl">תזכורת גיבוי</button>
+              <button type="button" onclick="renderImportBatches()" class="bg-amber-50 text-amber-900 text-sm px-4 py-2 rounded-xl">היסטוריית ייבואים</button>
+            </div>
+            <div id="importBatchesBox" class="hidden text-sm mb-3 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto"></div>
+            הנתונים העסקיים נשמרים בענן ומסתנכרנים בין מכשירים. מומלץ להשתמש גם בגיבוי JSON לפני שינויים גדולים.
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-5 py-3 rounded-xl shadow-lg text-sm opacity-0 transition-opacity duration-300 pointer-events-none z-50"></div>
+
+  <!-- Add/Edit Customer Modal -->
+  <div id="customerModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+      <h3 id="customerModalTitle" class="text-lg font-semibold mb-4">הוסף לקוח</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">שם לקוח</label>
+          <input type="text" id="custName" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="checkbox" id="custVat" checked class="rounded" />
+          <label for="custVat" class="text-sm">חייב במע״מ (18%)</label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">הערות / סוג</label>
+          <input type="text" id="custNotes" placeholder="לדוגמה: קווים קבועים, חריגים..." class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">קווים / גיליונות</label>
+          <div id="custLinesList" class="space-y-1.5 mb-2"></div>
+          <div class="flex gap-2">
+            <input type="text" id="custNewLine" placeholder="שם קו חדש..." class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+            <button type="button" onclick="addCustLine()" class="bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl text-sm">הוסף</button>
+          </div>
+        </div>
+        <div class="border-t border-slate-100 pt-3 mt-1">
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-sm font-medium">📋 מחירון לקוח</label>
+            <button type="button" onclick="addPriceListRow()" class="text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-2.5 py-1 rounded-lg">+ מחיר</button>
+          </div>
+          <div id="custPriceList" class="space-y-2 max-h-48 overflow-y-auto"></div>
+          <p class="text-xs text-slate-400 mt-1">מחירון קודם להיסטוריה. לא משתנה אוטומטית.</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">מסלולים נפוצים (מופרדים בפסיק)</label>
+          <textarea id="custRoutes" rows="2" placeholder="בב ים, ים בב, נתניה בב..." class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">מזמינים קבועים</label>
+          <div id="custOrderersList" class="space-y-1.5 mb-2 max-h-36 overflow-y-auto"></div>
+          <div class="flex gap-2">
+            <input type="text" id="custNewOrderer" placeholder="שם מזמין חדש" class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustOrderer()}" />
+            <button type="button" onclick="addCustOrderer()" class="bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl text-sm">הוסף</button>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">יופיעו ככפתורים מהירים בהזנת נסיעה · לכתר תורה זה קריטי</p>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="saveCustomer()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-medium">שמור</button>
+        <button onclick="closeCustomerModal()" class="px-5 border border-slate-300 rounded-xl hover:bg-slate-50">ביטול</button>
+        <button id="custDeleteBtn" onclick="deleteCustomer()" class="hidden px-4 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm">🗑️ מחק</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Driver Modal -->
+  <div id="driverModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+      <h3 id="driverModalTitle" class="text-lg font-semibold mb-4">הוסף מזמין</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">שם מזמין</label>
+          <input type="text" id="drvName" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">טלפון</label>
+          <input type="tel" id="drvPhone" placeholder="05xxxxxxxx" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">לקוח משויך (אופציונלי)</label>
+          <select id="drvCustomer" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm">
+            <option value="">— כללי —</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="checkbox" id="drvFavorite" checked class="rounded" />
+          <label for="drvFavorite" class="text-sm">מועדף (יופיע בקיצורים)</label>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="saveDriver()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-medium">שמור</button>
+        <button onclick="closeDriverModal()" class="px-5 border border-slate-300 rounded-xl hover:bg-slate-50">ביטול</button>
+        <button id="drvDeleteBtn" onclick="deleteDriver()" class="hidden px-4 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm">🗑️ מחק</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="supabase-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="cloud-sync.js"></script>
+  <script src="app.js?v=20261004cloud"></script>
+
+  <!-- Matrix view modal for multi-line customers (e.g. פרח) -->
+  <div id="matrixModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-2 sm:p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[92vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-200">
+        <h3 id="matrixTitle" class="text-lg font-semibold">תצוגת קווים</h3>
+        <button onclick="closeMatrix()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="px-4 py-2 border-b border-slate-100 flex flex-wrap gap-2 items-center">
+        <label class="text-sm text-slate-600">קו / גיליון:</label>
+        <select id="matrixLineSelect" onchange="renderMatrixBody()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm"></select>
+        <span class="text-xs text-slate-400 mr-auto">תצוגה מסודרת כמו באקסל – ימים × שעות קו</span>
+      </div>
+      <div id="matrixBody" class="overflow-auto flex-1 p-3 text-sm"></div>
+    </div>
+  </div>
+
+
+  <div id="dupModal" class="fixed inset-0 bg-black/40 z-[60] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+      <h3 class="text-lg font-semibold mb-2">⚠️ ייתכן שהנסיעה כבר קיימת</h3>
+      <div id="dupDetails" class="text-sm text-slate-600 mb-4 space-y-1"></div>
+      <div class="flex gap-2">
+        <button onclick="confirmSaveTrip(true)" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-xl font-medium">ייבא בכל זאת</button>
+        <button onclick="closeDupModal()" class="px-5 border border-slate-300 rounded-xl hover:bg-slate-50">בטל</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Trip Modal -->
+  <div id="tripEditModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+      <h3 class="text-lg font-semibold mb-4">✏️ עריכת נסיעה</h3>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium mb-1">לקוח</label>
+          <select id="editTripCustomer" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" onchange="onEditTripCustomerChange()"></select>
+        </div>
+        <div id="editTripLineRow" class="hidden">
+          <label class="block text-sm font-medium mb-1">קו</label>
+          <select id="editTripLine" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm"></select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">תאריך</label>
+          <input type="date" id="editTripDate" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">מחיר (₪)</label>
+          <input type="number" id="editTripPrice" min="0" step="1" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium mb-1">מוצא</label>
+            <input type="text" id="editTripOrigin" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">יעד / עמודת זמן</label>
+            <input type="text" id="editTripDest" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">מסלול</label>
+          <input type="text" id="editTripRoute" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">מזמין</label>
+          <input type="text" id="editTripDriver" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">הערות</label>
+          <input type="text" id="editTripNotes" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm" />
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="saveTripEdit()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-medium">שמור</button>
+        <button onclick="closeTripEdit()" class="px-5 border border-slate-300 rounded-xl hover:bg-slate-50">ביטול</button>
+        <button onclick="deleteTripFromEdit()" class="px-4 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl text-sm">🗑️</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Day calendar modal -->
+  <div id="dayCalModal" class="fixed inset-0 bg-black/40 z-[70] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-lg">📅 בחירת ימים</h3>
+        <button type="button" onclick="closeDayCalendarModal()" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="flex gap-2 mb-3 text-xs">
+        <button type="button" onclick="calSelectWeekdays()" class="flex-1 px-2 py-2 rounded-xl bg-indigo-50 text-indigo-800 hover:bg-indigo-100 font-medium">א׳–ה׳</button>
+        <button type="button" onclick="calSelectAll()" class="flex-1 px-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">כל החודש</button>
+        <button type="button" onclick="calClearDays()" class="flex-1 px-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">נקה</button>
+      </div>
+      <div id="dayCalendar" class="select-none"></div>
+      <p id="calModalHint" class="text-xs text-indigo-600 mt-3 text-center"></p>
+      <button type="button" onclick="closeDayCalendarModal()" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-medium">אישור</button>
+    </div>
+  </div>
+
+  <!-- Mobile FAB -->
+  <button type="button" id="fabAddTrip" onclick="showTab('quick');document.getElementById('formCustomer')?.focus()"
+    class="fixed bottom-5 left-5 z-40 sm:hidden bg-green-600 hover:bg-green-700 text-white rounded-full shadow-lg px-5 py-3.5 font-semibold text-sm flex items-center gap-2">
+    ➕ נסיעה
+  </button>
+
+  <div id="orderersModal" class="fixed inset-0 bg-black/40 z-[80] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-lg">מזמינים – <span id="orderersModalCust"></span></h3>
+        <button type="button" onclick="closeOrderersManager()" class="text-2xl text-slate-400 leading-none">&times;</button>
+      </div>
+      <div id="orderersManagerList" class="space-y-2 mb-3"></div>
+      <div class="flex gap-2">
+        <input type="text" id="newOrdererName" placeholder="מזמין חדש" class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm" onkeydown="if(event.key==='Enter'){event.preventDefault();addOrdererFromManager()}" />
+        <button type="button" onclick="addOrdererFromManager()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm">הוסף</button>
+      </div>
+      <p class="text-xs text-slate-400 mt-3">מזמינים נלמדים גם אוטומטית מהיסטוריית נסיעות ומסלולים.</p>
+      <button type="button" onclick="closeOrderersManager()" class="mt-4 w-full bg-slate-100 hover:bg-slate-200 py-2.5 rounded-xl text-sm font-medium">סגור</button>
+    </div>
+  </div>
+</body>
+</html>
