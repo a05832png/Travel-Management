@@ -80,20 +80,10 @@
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen">
 
+  <!-- Hidden login placeholder – local mode, no screen shown -->
+  <div id="cloudLogin" class="hidden" aria-hidden="true"></div>
+  <div id="cloudBootError" class="hidden fixed bottom-4 right-4 bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-xs z-[100]"></div>
 
-      <div class="space-y-3">
-        <input id="cloudEmail" type="email" autocomplete="email" placeholder="אימייל"
-          class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-slate-50/80 focus:bg-white" />
-        <input id="cloudPassword" type="password" autocomplete="current-password" placeholder="סיסמה"
-          class="w-full border border-slate-200 rounded-2xl px-4 py-3 text-sm bg-slate-50/80 focus:bg-white" />
-        <button onclick="cloudLogin()" class="w-full bg-gradient-to-l from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold py-3 rounded-2xl shadow-lg transition">כניסה למערכת</button>
-        <button onclick="cloudSignup()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 rounded-2xl transition">יצירת חשבון חדש</button>
-      </div>
-      <p id="cloudAuthMsg" class="text-center text-xs text-slate-500 mt-4 min-h-5"></p>
-      <div id="cloudBootError" class="hidden mt-3 bg-red-50 text-red-700 border border-red-200 rounded-xl p-3 text-xs"></div>
-      <p class="text-[11px] text-slate-400 text-center mt-5">התחברות נדרשת כדי למנוע שמירת נתונים עסקיים בדפדפן.</p>
-    </div>
-  </div>
 
 
   <!-- Header -->
