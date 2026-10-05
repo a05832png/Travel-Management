@@ -1,10 +1,10 @@
 // ============================================================
-// app-upgrade-3.js — Dashboard + Smart Alerts + Gemini V3
+// app-upgrade-3.js — Dashboard + Smart Alerts + Gemini V4
 // ============================================================
 // מכיל:
 //   1. אינדיקטור חיבור אמיתי + כפתור "בדוק סנכרון"
 //   2. "מה חסר לי החודש" — דשבורד חכם עם התראות מבוססות דפוסים
-//   3. Gemini V3 — fallback בין 4 מודלים + זיהוי לקוח/קו/עמודה אוטומטי
+//   3. Gemini V4 — fallback חכם + דיאגנוסטיקה + זיהוי לקוח/קו/עמודה
 // ============================================================
 
 (function () {
@@ -159,7 +159,7 @@
   };
 
   // ============================================================
-  // 2. SMART ALERTS — "מה חסר לי החודש"
+  // 2. SMART ALERTS
   // ============================================================
   function analyzeMissingPatterns() {
     const month = curMonth();
@@ -394,66 +394,90 @@
   }
 
   // ============================================================
-  // 4. GEMINI V3 — Multi-model fallback + full field detection
+  // 4. GEMINI V4 — Fallback + Diagnostics
   // ============================================================
+  // רשימת מודלים: 2.5-flash הוא הכי יציב. הישנים (1.5) הם רשת ביטחון.
   const GEMINI_MODELS = [
-    'gemini-flash-latest',
     'gemini-2.5-flash',
     'gemini-2.0-flash',
-    'gemini-2.0-flash-lite'
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
+    'gemini-flash-latest'
   ];
 
   async function geminiCall(prompt, maxTokens) {
     const key = (typeof state === 'object' && state.geminiApiKey) || '';
     if (!key) throw new Error('אין מפתח Gemini בהגדרות');
 
-    let lastErr = null;
+    const allErrors = [];
+
     for (const model of GEMINI_MODELS) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const resp = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: {
-                  temperature: 0.1,
-                  maxOutputTokens: maxTokens || 1024,
-                  responseMimeType: 'application/json'
-                }
-              })
+      try {
+        console.log(`🔄 מנסה ${model}...`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: maxTokens || 1024,
+              responseMimeType: 'application/json'
             }
-          );
-          const data = await resp.json();
-          if (resp.ok) {
-            let raw = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
-            raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-            console.log(`✅ Gemini הצליח עם ${model}`);
-            return JSON.parse(raw);
-          }
-          lastErr = data?.error?.message || ('HTTP ' + resp.status);
-          if (/high demand|quota|rate|unavailable|overload|503|429/i.test(lastErr)) {
-            console.log(`⏭️ ${model} עמוס — עובר למודל הבא`);
-            break;
-          }
-          if (attempt === 1) {
-            await new Promise(r => setTimeout(r, 800));
-            continue;
-          }
-          break;
-        } catch (e) {
-          lastErr = e.message || String(e);
-          if (attempt === 1) await new Promise(r => setTimeout(r, 500));
+          })
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          const errMsg = data?.error?.message || ('HTTP ' + resp.status);
+          allErrors.push(`${model}: ${resp.status} - ${errMsg}`);
+          console.warn(`❌ ${model} נכשל: ${resp.status} - ${errMsg}`);
+          continue;
         }
+
+        let raw = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
+        raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+
+        try {
+          const parsed = JSON.parse(raw);
+          console.log(`✅ הצליח עם ${model}`);
+          return parsed;
+        } catch (parseErr) {
+          allErrors.push(`${model}: תשובה לא תקינה מ-JSON: ${raw.slice(0, 100)}`);
+          console.warn(`⚠️ ${model} החזיר JSON לא תקין`);
+          continue;
+        }
+      } catch (e) {
+        allErrors.push(`${model}: ${e.message || e}`);
+        console.warn(`❌ ${model} שגיאת רשת: ${e.message}`);
       }
     }
-    throw new Error('כל המודלים עמוסים כרגע — נסה שוב בעוד דקה');
+
+    console.error('═══════════════════════════════════');
+    console.error('כל המודלים נכשלו. פירוט:');
+    allErrors.forEach(e => console.error('  ' + e));
+    console.error('═══════════════════════════════════');
+
+    const errorsText = allErrors.join('\n');
+
+    if (/401|403|API key not valid|API_KEY_INVALID|permission|disabled/i.test(errorsText)) {
+      throw new Error('🔑 המפתח שגוי או לא בתוקף. קח מפתח חדש מ-aistudio.google.com/app/apikey');
+    }
+    if (/429|quota|rate|resource_exhausted/i.test(errorsText)) {
+      throw new Error('⏱️ הגעת למכסת השימוש החינמית של Gemini. המתן 2-3 דקות ונסה שוב');
+    }
+    if (/404|not found/i.test(errorsText)) {
+      throw new Error('🚫 המודלים לא זמינים למפתח שלך. הפעל Gemini API ב-Google Cloud Console');
+    }
+    if (/503|overload|high demand|unavailable|temporarily/i.test(errorsText)) {
+      throw new Error('⏳ שרתי Gemini עמוסים בכל העולם. נסה שוב בעוד 2-3 דקות');
+    }
+    throw new Error('שגיאה: ' + (allErrors[0] || 'לא ידועה'));
   }
 
   async function geminiSmartParse(message, customerName) {
-    // בנה רשימת לקוחות וקווים מהמערכת
     const customersList = (state.customers || []).map(c => ({
       name: c.name,
       id: c.id,
@@ -523,6 +547,102 @@ ${message}
     pasteArea.insertAdjacentElement('afterend', btn);
   }
 
+  function injectGeminiTestButton() {
+    const geminiInput = document.getElementById('geminiApiKey');
+    if (!geminiInput || document.getElementById('geminiTestBtn')) return;
+
+    const container = geminiInput.parentNode;
+    const btnsRow = container.querySelector('.flex.flex-wrap.gap-2');
+    if (!btnsRow) return;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'geminiTestBtn';
+    btn.className = 'bg-gradient-to-l from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm px-4 py-2 rounded-xl font-medium';
+    btn.innerHTML = '🔬 בדיקה מפורטת';
+    btn.onclick = window.__geminiDiagnostic;
+    btnsRow.appendChild(btn);
+  }
+
+  window.__geminiDiagnostic = async function () {
+    const key = (typeof state === 'object' && state.geminiApiKey) || '';
+    if (!key) {
+      alert('❌ אין מפתח Gemini בהגדרות');
+      return;
+    }
+
+    const btn = document.getElementById('geminiTestBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ בודק...'; }
+
+    const results = [];
+    console.clear();
+    console.log('═══════ בדיקת Gemini ═══════');
+    console.log('מפתח:', key.slice(0, 8) + '...' + key.slice(-4));
+    console.log('');
+
+    for (const model of GEMINI_MODELS) {
+      const t0 = Date.now();
+      try {
+        const resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: 'החזר JSON: {"ok":true}' }] }],
+              generationConfig: { temperature: 0, maxOutputTokens: 50, responseMimeType: 'application/json' }
+            })
+          }
+        );
+        const data = await resp.json();
+        const ms = Date.now() - t0;
+
+        if (resp.ok) {
+          const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
+          console.log(`✅ ${model} — עובד! (${ms}ms)`);
+          results.push({ model, status: 'ok', ms, text });
+        } else {
+          const errMsg = data?.error?.message || ('HTTP ' + resp.status);
+          console.log(`❌ ${model} — ${resp.status} (${ms}ms): ${errMsg}`);
+          results.push({ model, status: 'error', code: resp.status, error: errMsg });
+        }
+      } catch (e) {
+        const ms = Date.now() - t0;
+        console.log(`❌ ${model} — שגיאת רשת (${ms}ms): ${e.message}`);
+        results.push({ model, status: 'network-error', error: e.message });
+      }
+    }
+
+    const working = results.filter(r => r.status === 'ok');
+    console.log('');
+    console.log('═══════ סיכום ═══════');
+    if (working.length) {
+      console.log(`✅ ${working.length} מתוך ${results.length} מודלים עובדים`);
+    } else {
+      console.log('❌ אין מודלים עובדים');
+    }
+    console.log('═══════════════════════');
+
+    let alertText = '🔬 תוצאות בדיקת Gemini:\n\n';
+    results.forEach(r => {
+      if (r.status === 'ok') alertText += `✅ ${r.model} — עובד (${r.ms}ms)\n`;
+      else if (r.status === 'error') alertText += `❌ ${r.model} — ${r.code}: ${String(r.error).slice(0, 60)}\n`;
+      else alertText += `❌ ${r.model} — שגיאת רשת\n`;
+    });
+
+    if (working.length) {
+      alertText += `\n💡 ${working.length} מודלים עובדים — נסה שוב לפרסר הודעה`;
+    } else {
+      alertText += '\n⚠️ אין מודלים עובדים. בעיות נפוצות:';
+      alertText += '\n• מפתח שגוי → קח חדש מ-aistudio.google.com/app/apikey';
+      alertText += '\n• לא הפעלת Gemini API ב-Google Cloud';
+      alertText += '\n• הגעת למכסה — המתן 24 שעות';
+    }
+
+    alert(alertText);
+    if (btn) { btn.disabled = false; btn.innerHTML = '🔬 בדיקה מפורטת'; }
+  };
+
   window.__aiParseMessage = async function () {
     const text = (document.getElementById('pasteArea')?.value || '').trim();
     if (!text) { toastMsg('הדבק הודעה קודם'); return; }
@@ -547,24 +667,21 @@ ${message}
       const result = await geminiSmartParse(text, currentCustName);
       console.log('🤖 Gemini parsed:', result);
 
-      // ═══ 1. זהה לקוח ובחר אותו ═══
+      // 1. זהה לקוח
       let matchedCustomerId = null;
       if (result.customerName && Array.isArray(state.customers)) {
         const target = result.customerName.trim().toLowerCase();
-        // חיפוש מדויק
         let hit = state.customers.find(c => c.name.trim().toLowerCase() === target);
-        // חיפוש חלקי
         if (!hit) hit = state.customers.find(c =>
           c.name.toLowerCase().includes(target) || target.includes(c.name.toLowerCase())
         );
-        // זיהוי לפי מילות מפתח
         if (!hit) {
           const keywords = {
             'פרח': 'perach', 'שמוליק': 'shmulik', 'כתר תורה': 'keter',
             'גורמה': 'gourmet', 'אורחות': 'orhot', 'אירוקס': 'airoks'
           };
           for (const [kw, id] of Object.entries(keywords)) {
-            if (target.includes(kw) || (result.customerName || '').includes(kw)) {
+            if (target.includes(kw)) {
               hit = state.customers.find(c => c.id === id);
               if (hit) break;
             }
@@ -579,15 +696,14 @@ ${message}
         await new Promise(r => setTimeout(r, 120));
       }
 
-      // ═══ 2. זהה קו ובחר אותו ═══
+      // 2. זהה קו
       const lineSel = document.getElementById('formLine');
       if (result.line && lineSel) {
         const target = result.line.trim().toLowerCase();
         const opts = Array.from(lineSel.options);
         let match = opts.find(o => o.value && o.value.trim().toLowerCase() === target);
         if (!match) match = opts.find(o => o.value && (
-          o.value.toLowerCase().includes(target) ||
-          target.includes(o.value.toLowerCase())
+          o.value.toLowerCase().includes(target) || target.includes(o.value.toLowerCase())
         ));
         if (match) {
           lineSel.value = match.value;
@@ -596,7 +712,7 @@ ${message}
         }
       }
 
-      // ═══ 3. זהה עמודה/שעה ובחר אותה ═══
+      // 3. זהה עמודה
       const colSel = document.getElementById('formColumn');
       const colRow = document.getElementById('columnRow');
       const colVisible = colRow && !colRow.classList.contains('hidden');
@@ -605,14 +721,11 @@ ${message}
         const opts = Array.from(colSel.options);
         let match = opts.find(o => o.value && o.value.trim().toLowerCase() === target);
         if (!match) match = opts.find(o => o.value && (
-          o.value.toLowerCase().includes(target) ||
-          target.includes(o.value.toLowerCase())
+          o.value.toLowerCase().includes(target) || target.includes(o.value.toLowerCase())
         ));
         if (!match) {
           const timeMatch = result.columnKey.match(/(\d{1,2}:\d{2})/);
-          if (timeMatch) {
-            match = opts.find(o => o.value && o.value.includes(timeMatch[1]));
-          }
+          if (timeMatch) match = opts.find(o => o.value && o.value.includes(timeMatch[1]));
         }
         if (match) {
           colSel.value = match.value;
@@ -621,13 +734,10 @@ ${message}
         }
       }
 
-      // ═══ 4. מלא שאר השדות ═══
+      // 4. מלא שדות אחרים
       if (result.date) {
         const el = document.getElementById('formDate');
-        if (el) {
-          el.value = result.date;
-          if (typeof onFormDateChange === 'function') onFormDateChange();
-        }
+        if (el) { el.value = result.date; if (typeof onFormDateChange === 'function') onFormDateChange(); }
       }
       if (result.price) {
         const el = document.getElementById('formPrice');
@@ -635,7 +745,6 @@ ${message}
       }
       if (result.route) {
         const rEl = document.getElementById('formRoute');
-        // אם כבר נבחרה עמודה - אל תדרוס את המסלול
         if (rEl && (!result.columnKey || !rEl.value)) {
           rEl.value = result.route;
           if (typeof onRouteFieldsChange === 'function') onRouteFieldsChange();
@@ -650,10 +759,8 @@ ${message}
         if (el) el.value = result.notes;
       }
 
-      // ═══ 5. רענן הצעות ═══
       try { if (typeof refreshPriceSuggestion === 'function') refreshPriceSuggestion(); } catch (_) {}
       try { if (typeof applyOrdererSuggestion === 'function') applyOrdererSuggestion(); } catch (_) {}
-      try { if (typeof refreshOrdererSuggestions === 'function') refreshOrdererSuggestions(); } catch (_) {}
 
       const filled = [];
       if (matchedCustomerId) filled.push('לקוח');
@@ -662,15 +769,11 @@ ${message}
       if (result.date) filled.push('תאריך');
       if (result.price) filled.push('מחיר');
       if (result.orderer) filled.push('מזמין');
-      if (result.notes) filled.push('הערות');
 
-      toastMsg(
-        `✨ Gemini מילא: ${filled.join(' · ')} (ביטחון: ${Math.round((result.confidence || 0) * 100)}%)`,
-        4000
-      );
+      toastMsg(`✨ Gemini מילא: ${filled.join(' · ')} (${Math.round((result.confidence || 0) * 100)}%)`, 4000);
     } catch (e) {
       console.error(e);
-      toastMsg('⚠️ Gemini נכשל: ' + (e.message || e), 5000);
+      toastMsg('⚠️ ' + (e.message || e), 6000);
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -724,22 +827,15 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
 
 החזר JSON בפורמט:
 {
-  "headline": "כותרת קצרה בעברית של 4-8 מילים",
+  "headline": "כותרת קצרה בעברית",
   "summary": "סיכום של 2-3 משפטים",
   "insights": [
-    { "icon": "emoji", "text": "תובנה קצרה" }
+    { "icon": "emoji", "text": "תובנה" }
   ],
   "actions": [
-    { "priority": "high|medium|low", "text": "פעולה מומלצת" }
+    { "priority": "high|medium|low", "text": "פעולה" }
   ]
 }
-
-התייחס ל:
-- מגמות (גדילה / ירידה)
-- לקוחות בולטים
-- חוסרים שחשוב למלא
-- אי-סדרים אפשריים
-- המלצות לפעולה
 
 ענה בעברית, JSON בלבד.`;
 
@@ -795,7 +891,6 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
         <div class="bg-white rounded-xl border border-purple-200 p-5">
           <h4 class="font-bold text-purple-900 text-lg mb-2">${esc(result.headline || 'ניתוח חודשי')}</h4>
           <p class="text-sm text-slate-700 mb-4">${esc(result.summary || '')}</p>
-
           ${result.insights && result.insights.length ? `
           <div class="mb-4">
             <div class="text-xs font-semibold text-slate-500 mb-2">תובנות</div>
@@ -807,7 +902,6 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
                 </div>`).join('')}
             </div>
           </div>` : ''}
-
           ${result.actions && result.actions.length ? `
           <div>
             <div class="text-xs font-semibold text-slate-500 mb-2">פעולות מומלצות</div>
@@ -850,6 +944,9 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
           setTimeout(injectAIAnalysisCard, 150);
           setTimeout(refreshSmartAlerts, 200);
         }
+        if (name === 'settings') {
+          setTimeout(injectGeminiTestButton, 200);
+        }
         return r;
       };
       wrapped.__upgrade3 = true;
@@ -857,6 +954,7 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
     }
 
     setTimeout(injectAIParseButton, 1200);
+    setTimeout(injectGeminiTestButton, 1300);
     setTimeout(injectDashboardWidgets, 1500);
     setTimeout(injectAIAnalysisCard, 1800);
 
@@ -879,6 +977,7 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
   }
   window.addEventListener('load', () => {
     setTimeout(injectAIParseButton, 800);
+    setTimeout(injectGeminiTestButton, 900);
     setTimeout(injectDashboardWidgets, 1200);
     setTimeout(injectAIAnalysisCard, 1400);
   });
