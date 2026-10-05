@@ -1,14 +1,19 @@
 /* ============================================================
-   Cloud Sync V4 — Single shared room, no login.
-   כל מי שטוען את האתר מתחבר לאותו חדר ורואה את אותם נתונים.
+   Cloud Sync V5 — Fixed infinite loop
+   ============================================================
+   חדר יחיד קבוע. כל מי שיש לו קישור לאתר רואה את אותם נתונים.
+   
+   תיקון הלולאה:
+   - כל שמירה מקבלת writeId ייחודי
+   - realtime event שמכיל את ה-writeId שלנו → מתעלמים
+   - זו הדרך הוודאית לזהות "השינוי שלי חזר אליי"
    ============================================================ */
 (function () {
   'use strict';
 
   const cfg = window.SUPABASE_CONFIG || {};
 
-  // 🔑 החדר היחיד שכולם מתחברים אליו — קבוע בקוד.
-  // לשנות רק אם רוצים לאפס את כל הנתונים מהתחלה.
+  // 🔑 החדר היחיד שכולם מתחברים אליו
   const FIXED_ROOM_ID = 'trip-manager-main-room';
 
   let client = null;
@@ -22,6 +27,7 @@
   let lastReadAt = 0;
   let connectionStatus = 'init';
   let statusListeners = [];
+  let lastWriteId = null;   // ← מזהה השמירה האחרונה שלנו
 
   function configReady() {
     return !!(cfg.url && cfg.anonKey && !String(cfg.url).includes('YOUR_'));
@@ -64,11 +70,14 @@
     } catch (_) { return null; }
   }
 
+  function genWriteId() {
+    return 'w_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+  }
+
   async function init(opts) {
     callbacks = opts || {};
 
     if (!configReady()) {
-      // אין קונפיגורציה — עובד מקומית
       const local = readLocal();
       setStatus('local');
       if (callbacks.onAuth) callbacks.onAuth({ mode: 'local' });
@@ -96,12 +105,13 @@
 
       let state;
       if (!data) {
-        // פעם ראשונה — צור את החדר עם ברירות מחדל
         state = defaultState();
         await saveNow(state);
         if (callbacks.onState) callbacks.onState(state, 'initial');
       } else {
         state = data.payload || defaultState();
+        // זכור את ה-writeId שהגיע מהשרת כדי לא לחשוב שזה שלנו
+        lastWriteId = state.__writeId || null;
         lastReadAt = Date.now();
         if (callbacks.onState) callbacks.onState(state, 'cloud');
       }
@@ -128,12 +138,21 @@
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'app_rooms', filter: 'room_id=eq.' + FIXED_ROOM_ID },
         payload => {
-          if (applyingRealtime) return;
           const next = payload?.new?.payload;
-          if (next) {
-            lastReadAt = Date.now();
-            if (callbacks.onState) callbacks.onState(next, 'realtime');
+          if (!next) return;
+
+          // ═══ ההגנה העיקרית ═══
+          // אם ה-writeId שחזר מהשרת זהה לזו ששלחנו עכשיו → זה השינוי שלנו.
+          // מתעלמים לחלוטין. זה שובר את הלולאה.
+          const incomingWriteId = next.__writeId;
+          if (incomingWriteId && incomingWriteId === lastWriteId) {
+            return;
           }
+
+          if (applyingRealtime) return;
+
+          lastReadAt = Date.now();
+          if (callbacks.onState) callbacks.onState(next, 'realtime');
         })
       .subscribe();
   }
@@ -156,25 +175,32 @@
       writeLocal(state);
       return;
     }
+
+    // הוסף writeId ייחודי לפני השליחה
+    const writeId = genWriteId();
+    const payloadWithId = { ...state, __writeId: writeId };
+    lastWriteId = writeId;
+
     applyingRealtime = true;
     try {
       const { error } = await client.from('app_rooms').upsert({
         room_id: FIXED_ROOM_ID,
-        payload: state,
+        payload: payloadWithId,
         updated_at: new Date().toISOString()
       }, { onConflict: 'room_id' });
       if (error) throw error;
       lastSaveAt = Date.now();
       lastSaveOk = true;
-      writeLocal(state);
+      writeLocal(payloadWithId);
       if (connectionStatus !== 'ok') setStatus('ok');
     } catch (err) {
       lastSaveOk = false;
       setStatus('error', err.message || String(err));
-      writeLocal(state);
+      writeLocal(payloadWithId);
       throw err;
     } finally {
-      setTimeout(() => { applyingRealtime = false; }, 300);
+      // שחרר את הדגל רק אחרי שהשמירה + ה-event שלה חלפו
+      setTimeout(() => { applyingRealtime = false; }, 1500);
     }
   }
 
@@ -193,7 +219,9 @@
 
       const payload = before.payload || {};
       payload.__verifyMarker = marker;
-      payload.__verifyAt = new Date().toISOString();
+      const writeId = genWriteId();
+      payload.__writeId = writeId;
+      lastWriteId = writeId;
 
       const { error: wErr } = await client.from('app_rooms').upsert({
         room_id: FIXED_ROOM_ID,
@@ -218,7 +246,6 @@
     }
   }
 
-  // === No-op auth ===
   async function signIn() { return null; }
   async function signUp() { return null; }
   function signOut() {}
