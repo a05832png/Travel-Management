@@ -1,10 +1,10 @@
 // ============================================================
-// app-upgrade-3.js — Dashboard + Smart Alerts + Gemini V4
+// app-upgrade-3.js — Dashboard + Smart Alerts + Gemini V5
 // ============================================================
 // מכיל:
 //   1. אינדיקטור חיבור אמיתי + כפתור "בדוק סנכרון"
 //   2. "מה חסר לי החודש" — דשבורד חכם עם התראות מבוססות דפוסים
-//   3. Gemini V4 — fallback חכם + דיאגנוסטיקה + זיהוי לקוח/קו/עמודה
+//   3. Gemini V5 — fallback חכם בין 5 מודלים + זיהוי לקוח/קו/עמודה
 // ============================================================
 
 (function () {
@@ -394,15 +394,16 @@
   }
 
   // ============================================================
-  // 4. GEMINI V4 — Fallback + Diagnostics
+  // 4. GEMINI V5 — Fallback בין 5 מודלים
   // ============================================================
-  // רשימת מודלים: 2.5-flash הוא הכי יציב. הישנים (1.5) הם רשת ביטחון.
+  // רשימת מודלים לפי סדר עדיפות.
+  // הראשון — ה-alias שעבד לך. האחרים — גיבוי.
   const GEMINI_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-flash',
-    'gemini-flash-latest'
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.6-flash',
+    'gemini-3.1-flash-lite'
   ];
 
   async function geminiCall(prompt, maxTokens) {
@@ -410,7 +411,9 @@
     if (!key) throw new Error('אין מפתח Gemini בהגדרות');
 
     const allErrors = [];
+    let successModel = null;
 
+    // ═══ נסה כל מודל בתורו ═══
     for (const model of GEMINI_MODELS) {
       try {
         console.log(`🔄 מנסה ${model}...`);
@@ -430,22 +433,25 @@
 
         const data = await resp.json();
 
+        // ❌ שגיאה — רשום והמשך למודל הבא
         if (!resp.ok) {
           const errMsg = data?.error?.message || ('HTTP ' + resp.status);
           allErrors.push(`${model}: ${resp.status} - ${errMsg}`);
-          console.warn(`❌ ${model} נכשל: ${resp.status} - ${errMsg}`);
+          console.warn(`❌ ${model}: ${resp.status} - ${errMsg}`);
           continue;
         }
 
+        // ✅ קיבלנו תשובה — נסה לפרסר JSON
         let raw = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
         raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
 
         try {
           const parsed = JSON.parse(raw);
           console.log(`✅ הצליח עם ${model}`);
+          successModel = model;
           return parsed;
         } catch (parseErr) {
-          allErrors.push(`${model}: תשובה לא תקינה מ-JSON: ${raw.slice(0, 100)}`);
+          allErrors.push(`${model}: JSON לא תקין`);
           console.warn(`⚠️ ${model} החזיר JSON לא תקין`);
           continue;
         }
@@ -455,26 +461,24 @@
       }
     }
 
+    // ═══ כל המודלים נכשלו ═══
     console.error('═══════════════════════════════════');
     console.error('כל המודלים נכשלו. פירוט:');
     allErrors.forEach(e => console.error('  ' + e));
     console.error('═══════════════════════════════════');
 
-    const errorsText = allErrors.join('\n');
+    const errText = allErrors.join('\n');
 
-    if (/401|403|API key not valid|API_KEY_INVALID|permission|disabled/i.test(errorsText)) {
+    if (/401|403|API_KEY_INVALID|API key not valid|permission|disabled/i.test(errText)) {
       throw new Error('🔑 המפתח שגוי או לא בתוקף. קח מפתח חדש מ-aistudio.google.com/app/apikey');
     }
-    if (/429|quota|rate|resource_exhausted/i.test(errorsText)) {
-      throw new Error('⏱️ הגעת למכסת השימוש החינמית של Gemini. המתן 2-3 דקות ונסה שוב');
+    if (/429|quota|rate|resource_exhausted/i.test(errText)) {
+      throw new Error('⏱️ הגעת למכסת השימוש של Gemini. המתן 3-5 דקות ונסה שוב');
     }
-    if (/404|not found/i.test(errorsText)) {
-      throw new Error('🚫 המודלים לא זמינים למפתח שלך. הפעל Gemini API ב-Google Cloud Console');
+    if (/503|overload|high demand|unavailable|temporarily/i.test(errText)) {
+      throw new Error('⏳ כל שרתי Gemini עמוסים כרגע. נסה שוב בעוד 2-3 דקות');
     }
-    if (/503|overload|high demand|unavailable|temporarily/i.test(errorsText)) {
-      throw new Error('⏳ שרתי Gemini עמוסים בכל העולם. נסה שוב בעוד 2-3 דקות');
-    }
-    throw new Error('שגיאה: ' + (allErrors[0] || 'לא ידועה'));
+    throw new Error('כל 5 המודלים לא זמינים: ' + (allErrors[0] || 'לא ידועה').slice(0, 100));
   }
 
   async function geminiSmartParse(message, customerName) {
@@ -576,7 +580,7 @@ ${message}
 
     const results = [];
     console.clear();
-    console.log('═══════ בדיקת Gemini ═══════');
+    console.log('═══════ בדיקת כל המודלים ═══════');
     console.log('מפתח:', key.slice(0, 8) + '...' + key.slice(-4));
     console.log('');
 
@@ -598,45 +602,36 @@ ${message}
         const ms = Date.now() - t0;
 
         if (resp.ok) {
-          const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
           console.log(`✅ ${model} — עובד! (${ms}ms)`);
-          results.push({ model, status: 'ok', ms, text });
+          results.push({ model, ok: true, ms });
         } else {
           const errMsg = data?.error?.message || ('HTTP ' + resp.status);
-          console.log(`❌ ${model} — ${resp.status} (${ms}ms): ${errMsg}`);
-          results.push({ model, status: 'error', code: resp.status, error: errMsg });
+          console.log(`❌ ${model} — ${resp.status} (${ms}ms): ${errMsg.slice(0, 80)}`);
+          results.push({ model, ok: false, code: resp.status, error: errMsg, ms });
         }
       } catch (e) {
         const ms = Date.now() - t0;
-        console.log(`❌ ${model} — שגיאת רשת (${ms}ms): ${e.message}`);
-        results.push({ model, status: 'network-error', error: e.message });
+        console.log(`❌ ${model} — שגיאת רשת (${ms}ms)`);
+        results.push({ model, ok: false, error: e.message, ms });
       }
     }
 
-    const working = results.filter(r => r.status === 'ok');
+    const working = results.filter(r => r.ok);
     console.log('');
     console.log('═══════ סיכום ═══════');
-    if (working.length) {
-      console.log(`✅ ${working.length} מתוך ${results.length} מודלים עובדים`);
-    } else {
-      console.log('❌ אין מודלים עובדים');
-    }
+    console.log(`✅ ${working.length}/${results.length} מודלים עובדים`);
     console.log('═══════════════════════');
 
     let alertText = '🔬 תוצאות בדיקת Gemini:\n\n';
     results.forEach(r => {
-      if (r.status === 'ok') alertText += `✅ ${r.model} — עובד (${r.ms}ms)\n`;
-      else if (r.status === 'error') alertText += `❌ ${r.model} — ${r.code}: ${String(r.error).slice(0, 60)}\n`;
-      else alertText += `❌ ${r.model} — שגיאת רשת\n`;
+      if (r.ok) alertText += `✅ ${r.model} — ${r.ms}ms\n`;
+      else alertText += `❌ ${r.model} — ${r.code || 'שגיאה'}\n`;
     });
 
     if (working.length) {
-      alertText += `\n💡 ${working.length} מודלים עובדים — נסה שוב לפרסר הודעה`;
+      alertText += `\n💡 ${working.length} מודלים עובדים`;
     } else {
-      alertText += '\n⚠️ אין מודלים עובדים. בעיות נפוצות:';
-      alertText += '\n• מפתח שגוי → קח חדש מ-aistudio.google.com/app/apikey';
-      alertText += '\n• לא הפעלת Gemini API ב-Google Cloud';
-      alertText += '\n• הגעת למכסה — המתן 24 שעות';
+      alertText += '\n⚠️ אין מודלים עובדים. בדוק את המפתח';
     }
 
     alert(alertText);
