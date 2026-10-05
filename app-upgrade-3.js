@@ -1,10 +1,10 @@
 // ============================================================
-// app-upgrade-3.js — Dashboard Today + Smart Alerts + Gemini V2
+// app-upgrade-3.js — Dashboard + Smart Alerts + Gemini V3
 // ============================================================
 // מכיל:
 //   1. אינדיקטור חיבור אמיתי + כפתור "בדוק סנכרון"
 //   2. "מה חסר לי החודש" — דשבורד חכם עם התראות מבוססות דפוסים
-//   3. Gemini V2 — fallback אוטומטי בין 4 מודלים
+//   3. Gemini V3 — fallback בין 4 מודלים + זיהוי לקוח/קו/עמודה אוטומטי
 // ============================================================
 
 (function () {
@@ -394,7 +394,7 @@
   }
 
   // ============================================================
-  // 4. GEMINI V2 — Multi-model fallback
+  // 4. GEMINI V3 — Multi-model fallback + full field detection
   // ============================================================
   const GEMINI_MODELS = [
     'gemini-flash-latest',
@@ -434,12 +434,10 @@
             return JSON.parse(raw);
           }
           lastErr = data?.error?.message || ('HTTP ' + resp.status);
-          // אם זה high demand / rate limit → נסה את המודל הבא
           if (/high demand|quota|rate|unavailable|overload|503|429/i.test(lastErr)) {
             console.log(`⏭️ ${model} עמוס — עובר למודל הבא`);
             break;
           }
-          // שגיאה אחרת — נסה שוב פעם אחת
           if (attempt === 1) {
             await new Promise(r => setTimeout(r, 800));
             continue;
@@ -455,26 +453,52 @@
   }
 
   async function geminiSmartParse(message, customerName) {
+    // בנה רשימת לקוחות וקווים מהמערכת
+    const customersList = (state.customers || []).map(c => ({
+      name: c.name,
+      id: c.id,
+      lines: c.lines || []
+    }));
+
     const prompt = `אתה מפרסר הודעות נסיעה בעברית. ההודעה הבאה הגיעה מנהג / מזכיר.
 חלץ JSON בלבד בפורמט:
 {
+  "customerName": "שם הלקוח שזוהה או null",
+  "line": "שם הקו/גיליון מתוך רשימת הקווים של הלקוח או null",
+  "columnKey": "שעה / עמודה (קו גדול 08:00, פתיחה, הלוך, חזור וכו') או null",
   "date": "YYYY-MM-DD או null",
   "price": מספר או null,
-  "route": "מסלול בעברית או null",
+  "route": "מסלול חופשי בעברית או null",
   "orderer": "שם המזמין או null",
   "notes": "הערות או null",
   "confidence": 0-1
 }
 
-כללים:
-- תאריך ברירת מחדל: ${new Date().toISOString().slice(0,10)}
-- קיצורים: בב=בני ברק, ים=ירושלים, ספר=מודיעין עילית, שמש=בית שמש, פת=פתח תקווה, שדה=שדה תעופה, טלז=טלזסטון
-- "הלוש" = הלוך ושוב. הוסף להערות.
-- "סיינה" = השכרה לפי שעה. הוסף להערות.
-- "ספיישל" / "ספרינטר" / "תחנות" / "המתנה" = הערות
-- מזמין הוא לרוב שם או כינוי. אם זה מספר טלפון — השאר null והעבר להערות.
+📋 רשימת הלקוחות במערכת (עם הקווים שלהם):
+${JSON.stringify(customersList, null, 2)}
 
-לקוח משויך (אם ידוע): ${customerName || 'לא ידוע'}
+לקוח משויך שנבחר כבר בטופס: ${customerName || 'לא נבחר'}
+
+כללים חשובים:
+1. זהה את הלקוח מתוך הטקסט. הנהג לפעמים כותב "עבור פרח", "בשביל שמוליק", "לכתר תורה".
+2. זהה את הקו מתוך רשימת הקווים של אותו לקוח (אל תמציא קו שלא ברשימה).
+3. אם יש שעה (8:00, 14:00) או מילה כמו "פתיחה", "הלוך", "חזור" - החזר אותה ב-columnKey.
+   - דוגמה: "קו גדול 08:00" ← columnKey="קו גדול 08:00"
+   - דוגמה: "קו 14:00" ← columnKey="קו 14:00"
+   - דוגמה: "פתיחה" ← columnKey="פתיחה"
+4. תאריך ברירת מחדל: ${new Date().toISOString().slice(0,10)}
+5. קיצורי מקום: בב=בני ברק, ים=ירושלים, ספר=מודיעין עילית, שמש=בית שמש, פת=פתח תקווה, שדה=שדה תעופה, טלז=טלזסטון
+6. "הלוש" = הלוך ושוב. הוסף להערות.
+7. "סיינה" = השכרה לפי שעה. הוסף להערות.
+8. מזמין הוא לרוב שם או כינוי. אם זה מספר טלפון — השאר null והעבר להערות.
+
+דוגמאות:
+• "בב ים הלוש 320 עבור כתר תורה, מזמין זיסקינד" →
+  {customerName: "כתר תורה", line: "שוטף", columnKey: null, price: 320, route: "בב ים", orderer: "זיסקינד", notes: "הלוש"}
+• "15/10 פרח קו גדול 08:00 בב 320" →
+  {customerName: "פרח", line: "בני ברק", columnKey: "קו גדול 08:00", price: 320, date: "2026-10-15"}
+• "שמוליק בב אשדוד 180" →
+  {customerName: "שמוליק", line: null, price: 180, route: "בב אשדוד"}
 
 ההודעה:
 """
@@ -482,8 +506,178 @@ ${message}
 """
 
 החזר JSON בלבד, ללא הסברים.`;
-    return geminiCall(prompt, 512);
+
+    return geminiCall(prompt, 768);
   }
+
+  function injectAIParseButton() {
+    const pasteArea = document.getElementById('pasteArea');
+    if (!pasteArea || document.getElementById('aiParseBtn')) return;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'aiParseBtn';
+    btn.className = 'mt-2 w-full bg-gradient-to-l from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm py-2.5 rounded-xl transition font-medium';
+    btn.innerHTML = '✨ נתח עם Gemini AI (מדויק יותר)';
+    btn.onclick = window.__aiParseMessage;
+    pasteArea.insertAdjacentElement('afterend', btn);
+  }
+
+  window.__aiParseMessage = async function () {
+    const text = (document.getElementById('pasteArea')?.value || '').trim();
+    if (!text) { toastMsg('הדבק הודעה קודם'); return; }
+
+    const key = (typeof state === 'object' && state.geminiApiKey) || '';
+    if (!key) {
+      toastMsg('⚠️ אין מפתח Gemini — הגדר בהגדרות');
+      return;
+    }
+
+    const custSel = document.getElementById('formCustomer');
+    const currentCustId = custSel?.value;
+    const currentCustName = currentCustId ? (getCust(currentCustId)?.name || '') : '';
+
+    const btn = document.getElementById('aiParseBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Gemini מפרסר...';
+    }
+
+    try {
+      const result = await geminiSmartParse(text, currentCustName);
+      console.log('🤖 Gemini parsed:', result);
+
+      // ═══ 1. זהה לקוח ובחר אותו ═══
+      let matchedCustomerId = null;
+      if (result.customerName && Array.isArray(state.customers)) {
+        const target = result.customerName.trim().toLowerCase();
+        // חיפוש מדויק
+        let hit = state.customers.find(c => c.name.trim().toLowerCase() === target);
+        // חיפוש חלקי
+        if (!hit) hit = state.customers.find(c =>
+          c.name.toLowerCase().includes(target) || target.includes(c.name.toLowerCase())
+        );
+        // זיהוי לפי מילות מפתח
+        if (!hit) {
+          const keywords = {
+            'פרח': 'perach', 'שמוליק': 'shmulik', 'כתר תורה': 'keter',
+            'גורמה': 'gourmet', 'אורחות': 'orhot', 'אירוקס': 'airoks'
+          };
+          for (const [kw, id] of Object.entries(keywords)) {
+            if (target.includes(kw) || (result.customerName || '').includes(kw)) {
+              hit = state.customers.find(c => c.id === id);
+              if (hit) break;
+            }
+          }
+        }
+        if (hit) matchedCustomerId = hit.id;
+      }
+
+      if (matchedCustomerId && custSel && custSel.value !== matchedCustomerId) {
+        custSel.value = matchedCustomerId;
+        if (typeof onCustomerChange === 'function') onCustomerChange();
+        await new Promise(r => setTimeout(r, 120));
+      }
+
+      // ═══ 2. זהה קו ובחר אותו ═══
+      const lineSel = document.getElementById('formLine');
+      if (result.line && lineSel) {
+        const target = result.line.trim().toLowerCase();
+        const opts = Array.from(lineSel.options);
+        let match = opts.find(o => o.value && o.value.trim().toLowerCase() === target);
+        if (!match) match = opts.find(o => o.value && (
+          o.value.toLowerCase().includes(target) ||
+          target.includes(o.value.toLowerCase())
+        ));
+        if (match) {
+          lineSel.value = match.value;
+          if (typeof onFormLineChange === 'function') onFormLineChange();
+          await new Promise(r => setTimeout(r, 120));
+        }
+      }
+
+      // ═══ 3. זהה עמודה/שעה ובחר אותה ═══
+      const colSel = document.getElementById('formColumn');
+      const colRow = document.getElementById('columnRow');
+      const colVisible = colRow && !colRow.classList.contains('hidden');
+      if (result.columnKey && colSel && colVisible) {
+        const target = result.columnKey.trim().toLowerCase();
+        const opts = Array.from(colSel.options);
+        let match = opts.find(o => o.value && o.value.trim().toLowerCase() === target);
+        if (!match) match = opts.find(o => o.value && (
+          o.value.toLowerCase().includes(target) ||
+          target.includes(o.value.toLowerCase())
+        ));
+        if (!match) {
+          const timeMatch = result.columnKey.match(/(\d{1,2}:\d{2})/);
+          if (timeMatch) {
+            match = opts.find(o => o.value && o.value.includes(timeMatch[1]));
+          }
+        }
+        if (match) {
+          colSel.value = match.value;
+          if (typeof onFormColumnChange === 'function') onFormColumnChange();
+          await new Promise(r => setTimeout(r, 120));
+        }
+      }
+
+      // ═══ 4. מלא שאר השדות ═══
+      if (result.date) {
+        const el = document.getElementById('formDate');
+        if (el) {
+          el.value = result.date;
+          if (typeof onFormDateChange === 'function') onFormDateChange();
+        }
+      }
+      if (result.price) {
+        const el = document.getElementById('formPrice');
+        if (el) el.value = result.price;
+      }
+      if (result.route) {
+        const rEl = document.getElementById('formRoute');
+        // אם כבר נבחרה עמודה - אל תדרוס את המסלול
+        if (rEl && (!result.columnKey || !rEl.value)) {
+          rEl.value = result.route;
+          if (typeof onRouteFieldsChange === 'function') onRouteFieldsChange();
+        }
+      }
+      if (result.orderer) {
+        const el = document.getElementById('formDriver');
+        if (el) el.value = result.orderer;
+      }
+      if (result.notes) {
+        const el = document.getElementById('formNotes');
+        if (el) el.value = result.notes;
+      }
+
+      // ═══ 5. רענן הצעות ═══
+      try { if (typeof refreshPriceSuggestion === 'function') refreshPriceSuggestion(); } catch (_) {}
+      try { if (typeof applyOrdererSuggestion === 'function') applyOrdererSuggestion(); } catch (_) {}
+      try { if (typeof refreshOrdererSuggestions === 'function') refreshOrdererSuggestions(); } catch (_) {}
+
+      const filled = [];
+      if (matchedCustomerId) filled.push('לקוח');
+      if (result.line) filled.push('קו');
+      if (result.columnKey) filled.push('שעה');
+      if (result.date) filled.push('תאריך');
+      if (result.price) filled.push('מחיר');
+      if (result.orderer) filled.push('מזמין');
+      if (result.notes) filled.push('הערות');
+
+      toastMsg(
+        `✨ Gemini מילא: ${filled.join(' · ')} (ביטחון: ${Math.round((result.confidence || 0) * 100)}%)`,
+        4000
+      );
+    } catch (e) {
+      console.error(e);
+      toastMsg('⚠️ Gemini נכשל: ' + (e.message || e), 5000);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '✨ נתח עם Gemini AI (מדויק יותר)';
+      }
+    }
+  };
 
   async function geminiMonthAnalysis() {
     const month = curMonth();
@@ -552,61 +746,6 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
     return geminiCall(prompt, 1024);
   }
 
-  function injectAIParseButton() {
-    const pasteArea = document.getElementById('pasteArea');
-    if (!pasteArea || document.getElementById('aiParseBtn')) return;
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = 'aiParseBtn';
-    btn.className = 'mt-2 w-full bg-gradient-to-l from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm py-2.5 rounded-xl transition font-medium';
-    btn.innerHTML = '✨ נתח עם Gemini AI (מדויק יותר)';
-    btn.onclick = window.__aiParseMessage;
-    pasteArea.insertAdjacentElement('afterend', btn);
-  }
-
-  window.__aiParseMessage = async function () {
-    const text = (document.getElementById('pasteArea')?.value || '').trim();
-    if (!text) { toastMsg('הדבק הודעה קודם'); return; }
-
-    const key = (typeof state === 'object' && state.geminiApiKey) || '';
-    if (!key) {
-      toastMsg('⚠️ אין מפתח Gemini — הגדר בהגדרות');
-      return;
-    }
-
-    const custSel = document.getElementById('formCustomer');
-    const custId = custSel?.value;
-    const custName = custId ? (getCust(custId)?.name || '') : '';
-
-    const btn = document.getElementById('aiParseBtn');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '⏳ Gemini מפרסר...';
-    }
-
-    try {
-      const result = await geminiSmartParse(text, custName);
-      if (result.date) { const el = document.getElementById('formDate'); if (el) el.value = result.date; }
-      if (result.price) { const el = document.getElementById('formPrice'); if (el) el.value = result.price; }
-      if (result.route) { const el = document.getElementById('formRoute'); if (el) el.value = result.route; }
-      if (result.orderer) { const el = document.getElementById('formDriver'); if (el) el.value = result.orderer; }
-      if (result.notes) { const el = document.getElementById('formNotes'); if (el) el.value = result.notes; }
-
-      toastMsg(`✨ Gemini פירסר בהצלחה (ביטחון: ${Math.round((result.confidence || 0) * 100)}%)`, 3500);
-      try { if (typeof refreshPriceSuggestion === 'function') refreshPriceSuggestion(); } catch (_) {}
-      try { if (typeof applyOrdererSuggestion === 'function') applyOrdererSuggestion(); } catch (_) {}
-    } catch (e) {
-      console.error(e);
-      toastMsg('⚠️ Gemini נכשל: ' + (e.message || e), 5000);
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '✨ נתח עם Gemini AI (מדויק יותר)';
-      }
-    }
-  };
-
   function injectAIAnalysisCard() {
     const tab = document.getElementById('tab-dashboard');
     if (!tab || tab.dataset.aiAnalysis === '1') return;
@@ -648,7 +787,7 @@ ${JSON.stringify(missing.slice(0, 5).map(m => ({
 
     btn.disabled = true;
     btn.innerHTML = '⏳ מנתח...';
-    box.innerHTML = '<div class="text-sm text-purple-700">שולח נתונים ל-Gemini (עשוי לנסות כמה מודלים)...</div>';
+    box.innerHTML = '<div class="text-sm text-purple-700">שולח נתונים ל-Gemini...</div>';
 
     try {
       const result = await geminiMonthAnalysis();
